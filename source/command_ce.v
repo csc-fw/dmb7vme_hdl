@@ -115,6 +115,9 @@ assign DEVICE[9] = (devcode == 7'h09);
 // 0F: Emergency PROM Programming, Reserved for Emergency CPLD
 //
 ////////////////////////////////////////////////
+initial begin
+	VMEREADY = 0;
+end
 
 (* iob = "TRUE" *)
 always @(AS_B or ADR or AM) begin //Latch on address strobe

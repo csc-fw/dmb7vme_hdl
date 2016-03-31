@@ -85,6 +85,10 @@ reg wen;
 wire le_rst;
 reg rst_d1;
 reg rst_d2;
+reg rst_d3;
+reg rst_d4;
+reg rst_d5;
+reg rst_d6;
 
 wire jtagena;
 wire jtagsetup;
@@ -118,6 +122,8 @@ wire pheads;
 reg  prgrstce;
 wire bgnprg;
 
+wire ini_capture;
+reg  dcfeb_in_use;
 wire ampinit;
 wire clr_jtagsetup;
 wire clr_stdata;
@@ -167,7 +173,15 @@ wire dmy_rst;
 assign dmy_rst = 0;
 
 initial begin
+	rst_d1      = 0;
+	rst_d2      = 0;
+	rst_d3      = 0;
+	rst_d4      = 0;
+	rst_d5      = 0;
+	rst_d6      = 0;
 	dt_initc    = 0;
+	sterase     = 0;
+	stdata      = 0;
 	dt_erases   = 0;
 	dt_ampinit  = 0;
 	dt_programx = 0;
@@ -204,6 +218,7 @@ assign read_flash = DEVICE & (COMMAND == 10'd6);
 
 assign initc       = STROBE & initialize;
 assign erases      = STROBE & erase;
+assign ini_capture = rst_d3 | rst_d4 | rst_d5 | rst_d6;
 assign ampinit     = STROBE & buckeye;
 assign asynread    = STROBE & (read_ram | read_flash);
 assign asynload    = STROBE & loadbuf;
@@ -238,6 +253,10 @@ end
 always @(posedge FASTCLK) begin
 	rst_d1     <= RST;
 	rst_d2     <= le_rst;
+	rst_d3     <= rst_d2;
+	rst_d4     <= rst_d3;
+	rst_d5     <= rst_d4;
+	rst_d6     <= rst_d5;
 	dt_initc    <= initc;
 	dt_erases   <= erases;
 	dt_ampinit  <= ampinit;
@@ -247,6 +266,11 @@ always @(posedge FASTCLK) begin
 	asr_1_1f    <= asr_1;
 	rd_busy_1   <= rd_busy;
 end
+
+always @(posedge FASTCLK) begin
+	if(rst_d5)	dcfeb_in_use <= FMDIN[7];
+end
+
 always @(posedge FASTCLK) begin
 	if(clr_st_read_inc)
 		st_read_inc <= 1'b0;
@@ -333,19 +357,24 @@ begin : with_flash_loading
 	reg jtagena_r;
 	reg pjs;
 	reg jtagsetup_r;
+	initial begin
+		jtagena_r = 0;
+		pjs = 0;
+		jtagsetup_r = 0;
+	end
 
 	always @(posedge FASTCLK) begin
 		if(enddata)
 			jtagena_r <= 1'b0;
 		else
-			jtagena_r <= (jtagena_r | rst_d2 | ampinit);
+			jtagena_r <= (jtagena_r | ((rst_d6 | ampinit) & ~dcfeb_in_use));
 	end
 	
 	always @(posedge FASTCLK or posedge clr_jtagsetup) begin
 		if(clr_jtagsetup)
 			pjs <= 1'b0;
 		else
-			pjs <= (pjs | rst_d2 | ampinit);
+			pjs <= (pjs | ((rst_d6 | ampinit) & ~dcfeb_in_use));
 	end
 	
 	always @(posedge FASTCLK or posedge clr_jtagsetup) begin
@@ -513,8 +542,8 @@ assign TCK = (jtagena)   ? {5{~febtck}}    : 5'bzzzzz;
 assign JTAGEN = jtagena;
 
 
-assign FMCE_B = !(sterase |  stdata | (WRITE_B & read_flash));
-assign FMOE_B =  (sterase | ~(stdata | (WRITE_B & read_flash)));
+assign FMCE_B = !(sterase |   stdata | (WRITE_B & read_flash) | ini_capture);
+assign FMOE_B =  (sterase | ~(stdata | (WRITE_B & read_flash) | ini_capture));
 assign FMWE_B = !(wen & (prgdata | pheads | eh1346 | eh25));
 
 assign FMDOUT = (eheads)  ? {(ersh[1] | ersh[3] | ersh[4]),eh25,(ersh[1] | ersh[4]),(ersh[2] | ersh[5] | ersh[6]),(ersh[1] | ersh[4]),eh25,(ersh[1] | ersh[4]),eh25} : 8'hzz;
@@ -523,6 +552,7 @@ assign FMDOUT = (prgdata) ? dataout : 8'hzz;
 assign FMADR  = (eheads)  ? {eh25,eh1346,eh25,eh1346,eh25,eh1346,eh25,eh1346,eh25,eh1346} : 10'hzzz;
 assign FMADR  = (pheads)  ? {phead2,(phead1 | phead3),phead2,(phead1 | phead3),phead2,(phead1 | phead3),phead2,(phead1 | phead3),phead2,(phead1 | phead3)} : 10'hzzz;
 assign FMADR  = (prgdata | stdata | (WRITE_B & read_flash))  ? {1'b1,pcount} : 10'hzzz;
+assign FMADR  = (ini_capture)  ? {1'b1,9'h000} : 10'hzzz;
 assign FMOUTEN_B = !fmoutena;
 
 assign DTACK_B = (asynload & asl_3) ? 1'b0 : 1'bz;

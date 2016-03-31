@@ -557,7 +557,7 @@ end
 
 always @(posedge fastclk or posedge rst) begin
 	if(rst)
-		selfeb <= 5'd0;
+		selfeb <= 5'h1F;
 	else
 		if(selcfeb & strbce)
 			selfeb <= indata[4:0];

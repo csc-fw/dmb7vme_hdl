@@ -105,6 +105,7 @@ module dmb7vme_hdl_sim;
 	reg [15:0] data_bus;
 	integer i;
 	wire [15:0] bbadc = 16'h28A6;
+	reg [7:0] flash_word[15:0];
 
 	// Instantiate the Unit Under Test (UUT)
 	dmb7vme_hdl uut (
@@ -224,24 +225,42 @@ module dmb7vme_hdl_sim;
 		dcapt = 0;
 		vrd_reg =0;
 		data_bus = 16'hzzzz;
+		flash_word[0] = 8'h00;
+		flash_word[1] = 8'h02;
+		flash_word[2] = 8'h02;
+		flash_word[3] = 8'h00;
+		flash_word[4] = 8'h04;
+		flash_word[5] = 8'h04;
+		flash_word[6] = 8'h00;
+		flash_word[7] = 8'h00;
+		flash_word[8] = 8'h08;
+		flash_word[9] = 8'h08;
+		flash_word[10] = 8'h00;
+		flash_word[11] = 8'h00;
+		flash_word[12] = 8'h10;
+		flash_word[13] = 8'h10;
+		flash_word[14] = 8'h00;
+		flash_word[15] = 8'h00;
 
 		// Wait 100 ns for global reset to finish
 		#100;
-		#(25*PERIOD);
 		IGLOBALRST = 0;
-		#(50*PERIOD);
-		IGLOBALRST = 1;
-		#(20*PERIOD);
-		IGLOBALRST = 0;
-		#(50*PERIOD);
+//		#(25*PERIOD);
+//		IGLOBALRST = 0;
+//		#(50*PERIOD);
+//		IGLOBALRST = 1;
+//		#(20*PERIOD);
+//		IGLOBALRST = 0;
+//		#(50*PERIOD);
 
+		#250000;
 		Set_Slot(5'd3);
 		VME_Read(24'h180000);  
 		VME_Read (24'h180004);  
 		
-		while(uut.flash49bv512_i.enddata != 1) begin
-			#3;
-		end
+//		while(uut.flash49bv512_i.enddata != 1) begin
+//			#3;
+//		end
 /*
 // CFEB JTAG 
 		#(20*PERIOD);
@@ -388,6 +407,7 @@ module dmb7vme_hdl_sim;
 		vrd_reg <= IODATA;
 	end
 	
+	assign IOFMD = (!OFMCE_B && !OFMOE_B) ? flash_word[OFMADR[3:0]] : 8'hzz;
 	assign IODATA = data_bus;
 	assign IOPARD = 19'h789AB;
 
