@@ -120,13 +120,21 @@ end
 // 05: Read TDO register
 // 06: Reset JTAG State machine
 // 07: Shift Instruction register
+// 08
+// 09
+// 0A
+// 0B
+// 0C: Shift data, no header, no trailer
+// 0D: Shift data with header only
+// 0E: Shift data with trailer only
+// 0F: Shift data with header and trailer
 //
 ////////////////////////////////////////////////
 
-assign datashft  = DEVICE & (COMMAND[5:2] == 4'd0);
-assign readtdo   = DEVICE & (COMMAND[5:0] == 6'd5);
-assign rstjtag   = DEVICE & (COMMAND[5:0] == 6'd6);
-assign instshft  = DEVICE & (COMMAND[5:0] == 6'd7);
+assign datashft  = DEVICE && (COMMAND[5:2] == 4'd0);
+assign readtdo   = DEVICE && (COMMAND[5:0] == 6'd5);
+assign rstjtag   = DEVICE && (COMMAND[5:0] == 6'd6);
+assign instshft  = DEVICE && ((COMMAND[5:0] == 6'd7) || (COMMAND[5:2] == 4'd3)); // Allow for instruction shifts with more than 16 bits.
 
 assign rdtdodk   = readtdo & STROBE & ~busyp1 & ~busy;
 
