@@ -261,7 +261,7 @@ module dmb7vme_hdl_sim;
 //		while(uut.flash49bv512_i.enddata != 1) begin
 //			#3;
 //		end
-/*
+
 // CFEB JTAG 
 		#(20*PERIOD);
 		VME_Write (24'h181020,16'h0004);  // Write CFEB selection register 
@@ -284,8 +284,10 @@ module dmb7vme_hdl_sim;
 		VME_Write (24'h181F00,16'h1818);  // Shift Data 
 		VME_Write (24'h181408,16'h1818);  // Shift Data 
 		VME_Read  (24'h181014);           // Read TDO reg
-		#(20*PERIOD);
-
+		#(60*PERIOD);
+		VME_Write (24'h181C4C,16'h1FE2);  // Shift instruction (bypass in PROM and USR1 in Virtex
+		VME_Write (24'h181408,16'h1818);  // Shift Data 
+/*
 //DMB Control FPGA JTAG
 		VME_Write (24'h182018,16'h0000);  // JTAG reset
 		#(20*PERIOD);
@@ -386,8 +388,8 @@ module dmb7vme_hdl_sim;
 */
 
 // LVDB ADCs 
-		#(20*PERIOD);
-		VME_Write (24'h188020,16'h0003);  // Write ADC selection register (3 bits) 
+//		#(20*PERIOD);
+//		VME_Write (24'h188020,16'h0003);  // Write ADC selection register (3 bits) 
 //		#(20*PERIOD);
 //		VME_Read  (24'h188024);           // Read ADC selection register 
 //		#(20*PERIOD);

@@ -45,6 +45,7 @@ module gen_jtag_ce #(
 
 wire datashft;
 wire instshft;
+wire inst2datashft;
 wire readtdo;
 wire rstjtag;
 
@@ -57,6 +58,7 @@ wire shdata;
 wire shihead;
 wire shdhead;
 wire shtail;
+wire shtail2head;
 reg enable;
 reg load;
 reg pload;
@@ -65,6 +67,7 @@ wire dtena;
 reg dheaden;
 reg iheaden;
 reg tailen;
+reg tail2headen;
 reg resetjtag;
 reg okrst;
 reg jr1;
@@ -76,9 +79,11 @@ reg donedata_p1;
 wire donedhead;
 wire doneihead;
 wire donetail;
+wire donetail2head;
 reg  donedhead_p1;
 reg  doneihead_p1;
 reg  donetail_p1;
+reg  donetail2head_p1;
 wire resetdone;
 wire clr_bsy;
 wire clr_cnt;
@@ -86,16 +91,19 @@ wire clr_pload;
 wire clr_dheaden;
 wire clr_iheaden;
 wire clr_tailen;
+wire clr_tail2headen;
 wire clr_resetjtag;
 
 reg [4:0] tms_ihead_sr;
 reg [4:0] tms_dhead_sr;
 reg [1:0] tms_tail_sr;
+reg [3:0] tms_tail2head_sr;
 reg [5:0] tms_rst_sr;
 wire [3:0] shft_cnt;
 wire [3:0] head_dcnt;
 wire [3:0] head_icnt;
 wire [3:0] tail_cnt;
+wire [3:0] tail2head_cnt;
 wire [3:0] rst_cnt;
 
 
@@ -128,6 +136,10 @@ end
 // 0D: Shift data with header only
 // 0E: Shift data with trailer only
 // 0F: Shift data with header and trailer
+// 10: 
+// 11: 
+// 12: Shift instruction with no header and special trailer; transition to data shift without passing through Run-Test-Idle state
+// 13: Shift instruction with    header and special trailer; transition to data shift without passing through Run-Test-Idle state
 //
 ////////////////////////////////////////////////
 
@@ -135,34 +147,40 @@ assign datashft  = DEVICE && (COMMAND[5:2] == 4'd0);
 assign readtdo   = DEVICE && (COMMAND[5:0] == 6'd5);
 assign rstjtag   = DEVICE && (COMMAND[5:0] == 6'd6);
 assign instshft  = DEVICE && ((COMMAND[5:0] == 6'd7) || (COMMAND[5:2] == 4'd3)); // Allow for instruction shifts with more than 16 bits.
+assign inst2datashft_nh = DEVICE && (COMMAND[5:0] == 6'd18); //Allow transitions from instruction shifting to data shifting without passing through Run-Test-Idle state (No header).
+assign inst2datashft    = DEVICE && (COMMAND[5:0] == 6'd19); //Allow transitions from instruction shifting to data shifting without passing through Run-Test-Idle state (with header).
 
 assign rdtdodk   = readtdo & STROBE & ~busyp1 & ~busy;
 
 assign TDI = q[0];
-assign TMS = (shihead)   ? tms_ihead_sr[0] : 1'bz;
-assign TMS = (shdhead)   ? tms_dhead_sr[0] : 1'bz;
-assign TMS = (shtail)    ? tms_tail_sr[0]  : 1'bz;
-assign TMS = (resetjtag) ? tms_rst_sr[0]   : 1'bz;
-assign TMS = (shdata)    ? tailen & donedata_m1 : 1'bz;
+assign TMS = (shihead)     ? tms_ihead_sr[0] : 1'bz;
+assign TMS = (shdhead)     ? tms_dhead_sr[0] : 1'bz;
+assign TMS = (shtail)      ? tms_tail_sr[0]  : 1'bz;
+assign TMS = (shtail2head) ? tms_tail2head_sr[0]  : 1'bz;
+assign TMS = (resetjtag)   ? tms_rst_sr[0]   : 1'bz;
+assign TMS = (shdata)      ? (tailen | tail2headen) & donedata_m1 : 1'bz;
 assign TCK = enable;
 
-assign shdata  = busy & !dheaden & !iheaden & !donedata_p1;
-assign shihead = busy & iheaden;
-assign shdhead = busy & dheaden;
-assign shtail  = busy & tailen & donedata_p1;
-assign donedata_m1 = (shft_cnt == 4'b0) & !load;
-assign donedhead = (head_dcnt == 4'd10);
-assign doneihead = (head_icnt == 4'd10);
-assign donetail  = tail_cnt[1];
-assign le_jr1    = jr1 & !jr2;
-assign resetdone = (rst_cnt == 4'd12);
-assign clr_cnt = RST | donedata_p1 | donedata;
-assign clr_bsy = RST | donetail | (donedata_p1 & !tailen);
-assign clr_pload      = (load | RST);
-assign clr_dheaden    = (donedhead | RST);
-assign clr_iheaden    = (doneihead | RST);
-assign clr_tailen     = (donetail | RST);
-assign clr_resetjtag  = (resetdone | RST);
+assign shdata          = busy & !dheaden & !iheaden & !donedata_p1;
+assign shihead         = busy & iheaden;
+assign shdhead         = busy & dheaden;
+assign shtail          = busy & tailen & donedata_p1;
+assign shtail2head     = busy & tail2headen & donedata_p1;
+assign donedata_m1     = (shft_cnt == 4'b0) & !load;
+assign donedhead       = (head_dcnt == 4'd10);
+assign doneihead       = (head_icnt == 4'd10);
+assign donetail        = tail_cnt[1];
+assign donetail2head   = (tail2head_cnt == 4'd4);
+assign le_jr1          = jr1 & !jr2;
+assign resetdone       = (rst_cnt == 4'd12);
+assign clr_cnt         = RST | donedata_p1 | donedata;
+assign clr_bsy         = RST | donetail | donetail2head | (donedata_p1 & !(tailen | tail2headen));
+assign clr_pload       = (load | RST);
+assign clr_dheaden     = (donedhead | RST);
+assign clr_iheaden     = (doneihead | RST);
+assign clr_tailen      = (donetail | RST);
+assign clr_tail2headen = (donetail2head | RST);
+assign clr_resetjtag   = (resetdone | RST);
 
 assign OUTDATA = rdtdodk ? qc : 16'hzzzz;
 assign dtena   = dt1 & dt2 & dt3 & dt4;
@@ -189,7 +207,7 @@ always @(posedge FASTCLK or posedge clr_pload)begin
 	if(clr_pload)
 		pload <= 1'b0;
 	else
-		if(STRBCE) pload <= datashft | instshft;
+		if(STRBCE) pload <= datashft | instshft | inst2datashft_nh | inst2datashft;
 end
 always @(posedge FASTCLK) begin
 	if(SLOWCLK_EN) begin
@@ -206,7 +224,7 @@ always @(posedge FASTCLK or negedge STROBE)begin
 	end
 	else
 		if(SLOWCLK_EN) begin
-			if(!busy) dt1 <= datashft | instshft;
+			if(!busy) dt1 <= datashft | instshft | inst2datashft_nh | inst2datashft;
 			dt2 <= dt1;
 		end
 end
@@ -222,7 +240,7 @@ always @(posedge FASTCLK or posedge clr_iheaden)begin
 	if(clr_iheaden)
 		iheaden <= 1'b0;
 	else
-		if(instshft & !busy & STROBE) iheaden <= COMMAND[0];
+		if((instshft | inst2datashft) & !busy & STROBE) iheaden <= COMMAND[0];
 end
 
 always @(posedge FASTCLK or posedge clr_tailen)begin
@@ -231,6 +249,15 @@ always @(posedge FASTCLK or posedge clr_tailen)begin
 	else
 		if(SLOWCLK_EN) begin
 			if((datashft | instshft) & pload & !busy) tailen <= COMMAND[1];
+		end
+end
+
+always @(posedge FASTCLK or posedge clr_tail2headen)begin
+	if(clr_tail2headen)
+		tail2headen <= 1'b0;
+	else
+		if(SLOWCLK_EN) begin
+			if((inst2datashft | inst2datashft_nh) & pload & !busy) tail2headen <= 1'b1;
 		end
 end
 always @(posedge FASTCLK or posedge RST)begin
@@ -261,17 +288,19 @@ end
 
 always @(posedge FASTCLK or posedge RST)begin
 	if(RST) begin
-		tms_ihead_sr <= 5'b00110;
-		tms_dhead_sr <= 5'b00100;
-		tms_tail_sr  <= 2'b01;
-		tms_rst_sr   <= 6'b011111;
+		tms_ihead_sr     <= 5'b00110;
+		tms_dhead_sr     <= 5'b00100;
+		tms_tail_sr      <= 2'b01;
+		tms_tail2head_sr <= 4'b0011;
+		tms_rst_sr       <= 6'b011111;
 	end
 	else
 		if(SLOWCLK_EN) begin
-			if(shihead   & enable) tms_ihead_sr <= {tms_ihead_sr[0],tms_ihead_sr[4:1]};
-			if(shdhead   & enable) tms_dhead_sr <= {tms_dhead_sr[0],tms_dhead_sr[4:1]};
-			if(shtail    & enable) tms_tail_sr  <= {tms_tail_sr[0],tms_tail_sr[1]};
-			if(resetjtag & enable) tms_rst_sr   <= {tms_rst_sr[0],tms_rst_sr[5:1]};
+			if(shihead     & enable) tms_ihead_sr     <= {tms_ihead_sr[0],tms_ihead_sr[4:1]};
+			if(shdhead     & enable) tms_dhead_sr     <= {tms_dhead_sr[0],tms_dhead_sr[4:1]};
+			if(shtail      & enable) tms_tail_sr      <= {tms_tail_sr[0],tms_tail_sr[1]};
+			if(shtail2head & enable) tms_tail2head_sr <= {tms_tail2head_sr[0],tms_tail2head_sr[3:1]};
+			if(resetjtag   & enable) tms_rst_sr       <= {tms_rst_sr[0],tms_rst_sr[5:1]};
 		end
 end
 
@@ -287,6 +316,10 @@ cbnce #(
 	.Width(4),
 	.TMR(TMR)
 ) tail_cnt_i (.CLK(FASTCLK),.RST(RST | donetail_p1),.CE(SLOWCLK_EN & shtail & enable),.Q(tail_cnt));
+cbnce #(
+	.Width(4),
+	.TMR(TMR)
+) tail2head_cnt_i (.CLK(FASTCLK),.RST(RST | donetail2head_p1),.CE(SLOWCLK_EN & shtail2head & enable),.Q(tail2head_cnt));
 
 always @(posedge FASTCLK) begin
 	if(SLOWCLK_EN) begin
@@ -297,6 +330,7 @@ end
 always @(posedge FASTCLK) begin
 	if(NEG_SLOWCLK_EN) begin
 		donetail_p1 <= donetail;
+		donetail2head_p1 <= donetail2head;
 	end
 end
 
