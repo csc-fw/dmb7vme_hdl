@@ -285,8 +285,14 @@ module dmb7vme_hdl_sim;
 		VME_Write (24'h181408,16'h1818);  // Shift Data 
 		VME_Read  (24'h181014);           // Read TDO reg
 		#(60*PERIOD);
-		VME_Write (24'h181C4C,16'h1FE2);  // Shift instruction (bypass in PROM and USR1 in Virtex
-		VME_Write (24'h181408,16'h1818);  // Shift Data 
+//		VME_Write (24'h181C4C,16'h1FE2);  // Shift instruction with header and special trailer
+//		VME_Write (24'h181408,16'h1818);  // Shift Data 
+		VME_Write (24'h181F34,16'hB3FF);  // Shift instruction with header
+		VME_Write (24'h181F30,16'hFC03);  // Shift instruction no header no trailer
+		VME_Write (24'h181F30,16'hFFFF);  // Shift instructionno header no trailer
+		VME_Write (24'h181D48,16'h3FFF);  // Shift instruction no header with special trailer
+		VME_Write (24'h181F00,16'h007E);  // Shift Data no header no trailer
+		VME_Write (24'h181B08,16'h0000);  // Shift Data no header with trailer
 /*
 //DMB Control FPGA JTAG
 		VME_Write (24'h182018,16'h0000);  // JTAG reset
