@@ -62,12 +62,12 @@ end
 // set firmware version
 assign board_version     = 4'd7;
 assign firmware_version  = 4'hE;
-assign firmware_revision = 8'h1A;
+assign firmware_revision = 8'h1B;
 
 // set date
 assign month             = 4'd04;
-assign day               = 6'd23;
-assign year              = 6'd18;
+assign day               = 6'd13;
+assign year              = 6'd19;
 
 assign ver_code  = {board_version,firmware_version,firmware_revision}; //Format: VvRR V= board version (6), v = firmware version, RR = revision
 assign date_code = {month,day,year};                                   //Format: mmmmm,0ddd,ddyy,yyyy
