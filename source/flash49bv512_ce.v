@@ -151,7 +151,10 @@ wire [8:0] wadr;
 wire [7:0] dataout;
 wire [8:0] pcount;
 wire [7:0] prg_time;
+wire prg_hold_end;
+
 reg  prgstop;
+reg  last_prg_word;
 reg  fmoutena;
 reg  pgmx_1;
 reg  phead1;
@@ -202,9 +205,10 @@ end
 // 00: Initialize PROGRAM process
 // 01: Load in BUCKEYE pattern
 // 02: Program data to Flash Memory 
-// 03: Read back Flash Memory
+// 03: Read back ram buffer Memory
 // 04: Initialize Buckeye
 // 05: Erase Flash Memory
+// 06: Read back Flash Memory directly
 //
 ////////////////////////////////////////////////
 
@@ -238,10 +242,10 @@ assign clr_jtagsetup = (le_rst | initc | endhead);
 assign clr_stdata    = (le_rst | initc | enddata);
 assign clr_er_prg    = (le_rst | initc);
 assign clr_ster      = (le_rst | initc | prgrstce | rsterase);
-assign clr_prgtime   = (le_rst | initc | phead1);
+assign clr_prgtime   = (le_rst | initc | phead1 | prgstop);
 assign clr_start_erase = (le_rst | initc | ersh[1]);
-assign bgnprg        = (pgmx_1 | prg_time[7]);
-
+assign bgnprg        = (pgmx_1 | (prg_hold_end & !last_prg_word));
+assign prg_hold_end  = prg_time[7];
 
 always @(posedge FASTCLK) begin
 	slowclk_en      <= (CLKCNT == 5'd0) || (CLKCNT == 5'd16);
@@ -266,6 +270,9 @@ always @(posedge FASTCLK) begin
 	asr_1_1f    <= asr_1;
 	rd_busy_1   <= rd_busy;
 end
+
+// Bit 7 of Flash data stored at pcount=0 is the flag to indicate if the configuration is for DCFEBs (1) or CFEBs (0)
+// dcfeb_in_use flag is read during initialization (end of reset).
 
 always @(posedge FASTCLK) begin
 	if(rst_d5)	dcfeb_in_use <= FMDIN[7];
@@ -306,6 +313,9 @@ cbnce #(
 	.Width(9),
 	.TMR(TMR)
 ) wadr_i (.CLK(FASTCLK),.RST(RST | initc),.CE(slowclk_en & load),.Q(wadr));
+
+// Internal 512 byte BRAM buffer for holding data to be written into the external FLASH PROM
+// Write to port A from VME; Read from port B to program Flash memory or read back through VME
 
 RAMB4_S8_S8 #(
 	.SIM_COLLISION_CHECK("ALL"), // "NONE", "WARNING_ONLY", "GENERATE_X_ONLY", "ALL" 
@@ -400,7 +410,8 @@ always @(posedge FASTCLK or posedge le_rst) begin
 		endhead <= 1'b0;
 	else
 		if(slowclk_en) begin
-			endhead <= ((romadr & 7'h75) == 7'h75);
+			endhead <= ((romadr & 7'h75) == 7'h75); //118 bits of JTAG preamble from interal ROM before switching to external Flash
+			// Note: romadr is reset on clr_jtagsetup which is set by endhead, so enhead is only one slowclk cycle long
 		end
 end
 always @(posedge FASTCLK or posedge clr_stdata) begin
@@ -408,7 +419,8 @@ always @(posedge FASTCLK or posedge clr_stdata) begin
 		stdata <= 1'b0;
 	else
 		if(slowclk_en) begin
-			stdata <= stdata | ((romadr & 7'h75) == 7'h75);
+			stdata <= stdata | ((romadr & 7'h75) == 7'h75); //start reading data from Flash PROM when preamble is done
+			// Note: stdata is held until enddata
 		end
 end
 
@@ -442,12 +454,16 @@ always @(posedge FASTCLK or posedge le_rst) begin
 		enddata <= 1'b0;
 	else
 		if(slowclk_en) begin
-			enddata <= stdata & ((pcount & 9'd432) == 432);
+			enddata <= stdata & ((pcount & 9'd432) == 9'd432); //(9'h1B0) 433 Words are read from the Flash PROM (after preamble sequence)
+			// Note: pcount is reset on endata, so endata is only one slowclk cycle long
 		end
 end
 
+// ROMs for JTAG preamble before switching to external Flash
+// These ROMs contain the pre-determined JTAG sequences for
+// TDI and TMS for putting XC18V01 in Bypass, shift instructions and data for Virtex XCV50 FPGA
+// and selecting proper registers in CFEB firmware.
 
-// ROMs for TDI and TMS for putting XC18V01 in Bypass and selecting proper registers in CFEB firmware.
 ROM32X1 #(.INIT(32'h507F8800)) tdiroma_i (.O(tdi_a),.A0(romadr[0]),.A1(romadr[1]),.A2(romadr[2]),.A3(romadr[3]),.A4(romadr[4]));
 ROM32X1 #(.INIT(32'hFFFFC7F0)) tdiromb_i (.O(tdi_b),.A0(romadr[0]),.A1(romadr[1]),.A2(romadr[2]),.A3(romadr[3]),.A4(romadr[4]));
 ROM32X1 #(.INIT(32'h05E7F880)) tdiromc_i (.O(tdi_c),.A0(romadr[0]),.A1(romadr[1]),.A2(romadr[2]),.A3(romadr[3]),.A4(romadr[4]));
@@ -458,17 +474,33 @@ ROM32X1 #(.INIT(32'h00E00078)) tmsromb_i (.O(tms_b),.A0(romadr[0]),.A1(romadr[1]
 ROM32X1 #(.INIT(32'h801C000F)) tmsromc_i (.O(tms_c),.A0(romadr[0]),.A1(romadr[1]),.A2(romadr[2]),.A3(romadr[3]),.A4(romadr[4]));
 ROM32X1 #(.INIT(32'h000E0007)) tmsromd_i (.O(tms_d),.A0(romadr[0]),.A1(romadr[1]),.A2(romadr[2]),.A3(romadr[3]),.A4(romadr[4]));
 
+// JTAG sequence is initiated by power up or reprogram (fpgareset)
+// Sequence starts by reading tms/tdi ROMs
+// JTAG sequence up to shift-DR state for Buckeye data is:
+// JTAG Reset; shft instr., USR1(5bits)/Bypass(8bits),shft data, 0x00A(8bits+1extra); Buckeye Mask/
+//             shft instr., USR2(5bits)/Bypass(8bits),shft data, 0x03F(6bits+1extra); Select all 6 chips;
+//             shft instr., USR1(5bits)/Bypass(8bits),shft data, 0x00B(8bits+1extra); Buckeye shift;
+//             shft instr., USR2(5bits)/Bypass(8bits),shft data, 0x03F(6bits+1extra); Buckeye data;
+// Total bits in JTAG preamble sequence in ROM is 118 (ROM addr 0 to 0x75);
+// Buckeye data (stored in external Flash PROM) is 3 bits/channel; 16 channels/chip; 6 chips; Total of 288 bits.
+// Encoding of the 3 bits is 0-normal mode; 1-6 Internal cap combinations for patterns; 7-Kill channel;
+//
+// After 118 bits read from ROMs, sequence transfers to external PROM where an additional 432 bit are read out.
+
 cbnce #(
 	.Width(9),
 	.TMR(TMR)
 ) pcount_i (.CLK(FASTCLK),.RST(le_rst | initc | enddata | programx),.CE(slowclk_en & (stdata | read_inc | prgdata)),.Q(pcount));
 
 always @(posedge FASTCLK or posedge clr_er_prg) begin
-	if(clr_er_prg)
-		prgstop <= 1'b0;
+	if(clr_er_prg) begin
+		last_prg_word <= 1'b0;
+		prgstop       <= 1'b0;
+	end
 	else
 		if(neg_slowclk_en) begin
-			prgstop <= ((pcount & 9'h1C0) == 9'h1C0);
+			last_prg_word <= ((pcount & 9'h1C0) == 9'h1C0); // 448 Words from buffer are written to Flash PROM 
+			prgstop       <= prg_hold_end & last_prg_word;
 		end
 end
 
@@ -505,9 +537,12 @@ always @(posedge FASTCLK or posedge clr_prgtime) begin
 	if(clr_prgtime)
 		prg_time_ce <= 1'b0;
 	else
-		prg_time_ce <= (prg_time_ce | prgdata);
+		prg_time_ce <= (prg_time_ce | prgdata); // cleared on phead1, set on phead3
 end
 
+// Counter for hold time after initiating a program sequence in the Flash memory
+// Counts at slowclk rate (2.5 MHz, 400ns)
+// Once programming begins (bgnprg), wait 51.2uS (count = 8'h80, bit[7] high) before starting next program sequence.
 cbnce #(
 	.Width(8),
 	.TMR(TMR)
@@ -515,7 +550,7 @@ cbnce #(
 
 always @(posedge FASTCLK) begin
 	if(slowclk_en) begin
-		prgrstce <= prg_time[4] & !prg_time[6];
+		prgrstce <= prg_time[4] & !prg_time[6]; // reset sterase after 6.4uS; sterase chip enables the Flash device(FMCE_B)
 	end
 end
 

@@ -19,8 +19,8 @@
 //
 //////////////////////////////////////////////////////////////////////////////////
 module dmb7vme_hdl #(
-	parameter Flash_Disabled = 1,
-	parameter TMR = 0
+	parameter Flash_Disabled = 0,
+	parameter TMR = 1
 )
 (
     input FPGACLK,

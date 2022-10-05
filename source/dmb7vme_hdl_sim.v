@@ -262,6 +262,20 @@ module dmb7vme_hdl_sim;
 //			#3;
 //		end
 
+// Ampinit command; Manually start JTAG sequence to CFEBs
+//		#(20*PERIOD);
+//		VME_Write (24'h189010,16'h0000);  // Initiate JTAG sequence to CFEBs
+//		#250000;
+// Flash 49bv512 erase
+		#(20*PERIOD);
+		VME_Write (24'h189014,16'h0000);  // Erase Flash
+		#250000;
+// Flash 49bv512 program
+		#(20*PERIOD);
+		VME_Write (24'h189008,16'h0000);  // Erase Flash
+		#250000;
+
+/*
 // CFEB JTAG 
 		#(20*PERIOD);
 		VME_Write (24'h181020,16'h0004);  // Write CFEB selection register 
@@ -293,6 +307,8 @@ module dmb7vme_hdl_sim;
 		VME_Write (24'h181D48,16'h3FFF);  // Shift instruction no header with special trailer
 		VME_Write (24'h181F00,16'h007E);  // Shift Data no header no trailer
 		VME_Write (24'h181B08,16'h0000);  // Shift Data no header with trailer
+*/
+
 /*
 //DMB Control FPGA JTAG
 		VME_Write (24'h182018,16'h0000);  // JTAG reset
